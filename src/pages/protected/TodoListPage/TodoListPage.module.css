@@ -1,0 +1,13 @@
+.container {
+  padding: 1rem 0;
+}
+
+.title {
+  font-size: 1.75rem;
+  font-weight: 700;
+  margin-bottom: 1rem;
+}
+
+.placeholder {
+  color: var(--color-text-muted);
+}

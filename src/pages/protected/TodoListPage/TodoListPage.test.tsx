@@ -212,6 +212,36 @@ describe('TodoListPage', () => {
     expect(todoService.create).not.toHaveBeenCalled();
   });
 
+  it('does not submit when only description is provided without a title', async () => {
+    vi.mocked(todoService.list).mockResolvedValue([]);
+    renderPage();
+
+    await waitFor(() => screen.getByText('+ New Todo'));
+    act(() => { fireEvent.click(screen.getByText('+ New Todo')); });
+
+    fireEvent.change(screen.getByPlaceholderText('Description (optional)'), { target: { value: 'Some description' } });
+
+    await act(async () => { fireEvent.click(screen.getByText('Add')); });
+
+    expect(todoService.create).not.toHaveBeenCalled();
+  });
+
+  it('sends undefined description when creating a todo without description', async () => {
+    const newTodo: Todo = { id: '99', title: 'Title only', status: 'TODO', userId: 'u1', createdAt: BASE_DATE, updatedAt: BASE_DATE };
+    vi.mocked(todoService.list).mockResolvedValue([]);
+    vi.mocked(todoService.create).mockResolvedValue(newTodo);
+    renderPage();
+
+    await waitFor(() => screen.getByText('+ New Todo'));
+    act(() => { fireEvent.click(screen.getByText('+ New Todo')); });
+
+    fireEvent.change(screen.getByPlaceholderText('What needs to be done?'), { target: { value: 'Title only' } });
+
+    await act(async () => { fireEvent.click(screen.getByText('Add')); });
+
+    expect(todoService.create).toHaveBeenCalledWith({ title: 'Title only' });
+  });
+
   it('calls todoService.update when a card is dragged to a different column', async () => {
     vi.mocked(todoService.list).mockResolvedValue(mockTodos);
     vi.mocked(todoService.update).mockResolvedValue({ ...mockTodos[0], status: 'DONE' });

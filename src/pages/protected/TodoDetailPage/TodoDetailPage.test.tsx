@@ -94,6 +94,29 @@ describe('TodoDetailPage', () => {
     expect(screen.getByText('Save Changes')).toBeDisabled();
   });
 
+  it('Save Changes button is disabled when title is cleared', async () => {
+    vi.mocked(todoService.getById).mockResolvedValue(mockTodo);
+    renderPage();
+
+    await waitFor(() => screen.getByDisplayValue('Buy groceries'));
+    fireEvent.change(screen.getByDisplayValue('Buy groceries'), {
+      target: { value: '' },
+    });
+
+    expect(screen.getByText('Save Changes')).toBeDisabled();
+  });
+
+  it('handles todo with no description gracefully', async () => {
+    const todoNoDesc: Todo = { ...mockTodo, description: undefined };
+    vi.mocked(todoService.getById).mockResolvedValue(todoNoDesc);
+    renderPage();
+
+    await waitFor(() => screen.getByDisplayValue('Buy groceries'));
+    // Description textarea should be empty
+    const descTextarea = screen.getByPlaceholderText('Add a description (optional)…');
+    expect((descTextarea as HTMLTextAreaElement).value).toBe('');
+  });
+
   it('Save Changes button is enabled after editing the title', async () => {
     vi.mocked(todoService.getById).mockResolvedValue(mockTodo);
     renderPage();

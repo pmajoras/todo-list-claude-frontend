@@ -48,6 +48,34 @@
   margin-bottom: 0.5rem;
 }
 
+/* ── Title input ────────────────────────────────────── */
+.titleInput {
+  width: 100%;
+  padding: 0.75rem 0.875rem;
+  border: 1.5px solid rgba(0, 0, 0, 0.08);
+  border-radius: var(--radius-md);
+  font-size: 1.0625rem;
+  font-weight: 600;
+  font-family: inherit;
+  color: var(--color-text);
+  background: #FAFAF8;
+  outline: none;
+  line-height: 1.4;
+  letter-spacing: -0.01em;
+  transition: border-color 0.15s, box-shadow 0.15s, background 0.15s;
+}
+
+.titleInput:focus {
+  border-color: var(--color-primary);
+  background: white;
+  box-shadow: 0 0 0 3px rgba(74, 124, 247, 0.08);
+}
+
+.titleInput::placeholder {
+  color: var(--color-text-tertiary);
+  font-weight: 400;
+}
+
 /* ── Textarea ───────────────────────────────────────── */
 .textarea {
   width: 100%;

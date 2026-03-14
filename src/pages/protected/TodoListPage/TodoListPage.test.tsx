@@ -66,10 +66,10 @@ vi.mock('react-router-dom', async (importOriginal) => {
 const BASE_DATE = '2024-01-01T00:00:00Z';
 
 const mockTodos: Todo[] = [
-  { id: '1', description: 'Todo item',        status: 'TODO',        order: 2, userId: 'u1', createdAt: BASE_DATE, updatedAt: BASE_DATE },
-  { id: '4', description: 'Low priority',     status: 'TODO',        order: 1, userId: 'u1', createdAt: BASE_DATE, updatedAt: BASE_DATE },
-  { id: '2', description: 'In progress item', status: 'IN_PROGRESS', order: 5, userId: 'u1', createdAt: BASE_DATE, updatedAt: BASE_DATE },
-  { id: '3', description: 'Done item',        status: 'DONE',        order: 3, userId: 'u1', createdAt: BASE_DATE, updatedAt: BASE_DATE },
+  { id: '1', title: 'Todo item',        description: 'Todo description',        status: 'TODO',        order: 2, userId: 'u1', createdAt: BASE_DATE, updatedAt: BASE_DATE },
+  { id: '4', title: 'Low priority',     description: 'Low priority desc',       status: 'TODO',        order: 1, userId: 'u1', createdAt: BASE_DATE, updatedAt: BASE_DATE },
+  { id: '2', title: 'In progress item', description: 'In progress description', status: 'IN_PROGRESS', order: 5, userId: 'u1', createdAt: BASE_DATE, updatedAt: BASE_DATE },
+  { id: '3', title: 'Done item',        description: 'Done description',        status: 'DONE',        order: 3, userId: 'u1', createdAt: BASE_DATE, updatedAt: BASE_DATE },
 ];
 
 const mockProject: Project = {
@@ -114,6 +114,28 @@ describe('TodoListPage', () => {
     });
   });
 
+  it('displays description on cards when present', async () => {
+    vi.mocked(todoService.list).mockResolvedValue(mockTodos);
+    renderPage();
+
+    await waitFor(() => {
+      expect(screen.getByText('Todo description')).toBeTruthy();
+      expect(screen.getByText('In progress description')).toBeTruthy();
+    });
+  });
+
+  it('does not render description when it is undefined', async () => {
+    const todosNoDesc: Todo[] = [
+      { id: '1', title: 'Title only', status: 'TODO', userId: 'u1', createdAt: BASE_DATE, updatedAt: BASE_DATE },
+    ];
+    vi.mocked(todoService.list).mockResolvedValue(todosNoDesc);
+    renderPage();
+
+    await waitFor(() => expect(screen.getByText('Title only')).toBeTruthy());
+    // The card should not have a description paragraph
+    expect(screen.queryByText('undefined')).toBeNull();
+  });
+
   it('shows an error message when list() rejects', async () => {
     vi.mocked(todoService.list).mockRejectedValue(new Error('Network error'));
     renderPage();
@@ -129,6 +151,7 @@ describe('TodoListPage', () => {
     act(() => { fireEvent.click(screen.getByText('+ New Todo')); });
 
     expect(screen.getByPlaceholderText('What needs to be done?')).toBeTruthy();
+    expect(screen.getByPlaceholderText('Description (optional)')).toBeTruthy();
   });
 
   it('hides the form when Cancel is clicked', async () => {
@@ -142,8 +165,8 @@ describe('TodoListPage', () => {
     expect(screen.queryByPlaceholderText('What needs to be done?')).toBeNull();
   });
 
-  it('calls todoService.create and adds the card to the board', async () => {
-    const newTodo: Todo = { id: '99', description: 'New task', status: 'TODO', userId: 'u1', createdAt: BASE_DATE, updatedAt: BASE_DATE };
+  it('calls todoService.create with title and adds the card to the board', async () => {
+    const newTodo: Todo = { id: '99', title: 'New task', status: 'TODO', userId: 'u1', createdAt: BASE_DATE, updatedAt: BASE_DATE };
     vi.mocked(todoService.list).mockResolvedValue([]);
     vi.mocked(todoService.create).mockResolvedValue(newTodo);
     renderPage();
@@ -156,11 +179,28 @@ describe('TodoListPage', () => {
 
     await act(async () => { fireEvent.click(screen.getByText('Add')); });
 
-    expect(todoService.create).toHaveBeenCalledWith({ description: 'New task' });
+    expect(todoService.create).toHaveBeenCalledWith({ title: 'New task' });
     await waitFor(() => expect(screen.getByText('New task')).toBeTruthy());
   });
 
-  it('does not submit an empty description', async () => {
+  it('calls todoService.create with title and description when both provided', async () => {
+    const newTodo: Todo = { id: '99', title: 'New task', description: 'Some details', status: 'TODO', userId: 'u1', createdAt: BASE_DATE, updatedAt: BASE_DATE };
+    vi.mocked(todoService.list).mockResolvedValue([]);
+    vi.mocked(todoService.create).mockResolvedValue(newTodo);
+    renderPage();
+
+    await waitFor(() => screen.getByText('+ New Todo'));
+    act(() => { fireEvent.click(screen.getByText('+ New Todo')); });
+
+    fireEvent.change(screen.getByPlaceholderText('What needs to be done?'), { target: { value: 'New task' } });
+    fireEvent.change(screen.getByPlaceholderText('Description (optional)'), { target: { value: 'Some details' } });
+
+    await act(async () => { fireEvent.click(screen.getByText('Add')); });
+
+    expect(todoService.create).toHaveBeenCalledWith({ title: 'New task', description: 'Some details' });
+  });
+
+  it('does not submit an empty title', async () => {
     vi.mocked(todoService.list).mockResolvedValue([]);
     renderPage();
 
@@ -170,6 +210,36 @@ describe('TodoListPage', () => {
     await act(async () => { fireEvent.click(screen.getByText('Add')); });
 
     expect(todoService.create).not.toHaveBeenCalled();
+  });
+
+  it('does not submit when only description is provided without a title', async () => {
+    vi.mocked(todoService.list).mockResolvedValue([]);
+    renderPage();
+
+    await waitFor(() => screen.getByText('+ New Todo'));
+    act(() => { fireEvent.click(screen.getByText('+ New Todo')); });
+
+    fireEvent.change(screen.getByPlaceholderText('Description (optional)'), { target: { value: 'Some description' } });
+
+    await act(async () => { fireEvent.click(screen.getByText('Add')); });
+
+    expect(todoService.create).not.toHaveBeenCalled();
+  });
+
+  it('sends undefined description when creating a todo without description', async () => {
+    const newTodo: Todo = { id: '99', title: 'Title only', status: 'TODO', userId: 'u1', createdAt: BASE_DATE, updatedAt: BASE_DATE };
+    vi.mocked(todoService.list).mockResolvedValue([]);
+    vi.mocked(todoService.create).mockResolvedValue(newTodo);
+    renderPage();
+
+    await waitFor(() => screen.getByText('+ New Todo'));
+    act(() => { fireEvent.click(screen.getByText('+ New Todo')); });
+
+    fireEvent.change(screen.getByPlaceholderText('What needs to be done?'), { target: { value: 'Title only' } });
+
+    await act(async () => { fireEvent.click(screen.getByText('Add')); });
+
+    expect(todoService.create).toHaveBeenCalledWith({ title: 'Title only' });
   });
 
   it('calls todoService.update when a card is dragged to a different column', async () => {
@@ -249,8 +319,8 @@ describe('TodoListPage', () => {
 
   it('treats null order as 1 when sorting', async () => {
     const todosWithNull: Todo[] = [
-      { id: '1', description: 'High priority', status: 'TODO', order: 2,         userId: 'u1', createdAt: BASE_DATE, updatedAt: BASE_DATE },
-      { id: '5', description: 'Null order',    status: 'TODO', order: undefined,  userId: 'u1', createdAt: BASE_DATE, updatedAt: BASE_DATE },
+      { id: '1', title: 'High priority', status: 'TODO', order: 2,         userId: 'u1', createdAt: BASE_DATE, updatedAt: BASE_DATE },
+      { id: '5', title: 'Null order',    status: 'TODO', order: undefined,  userId: 'u1', createdAt: BASE_DATE, updatedAt: BASE_DATE },
     ];
     vi.mocked(todoService.list).mockResolvedValue(todosWithNull);
     renderPage();
@@ -337,34 +407,37 @@ describe('TodoListPage', () => {
     await waitFor(() => expect(screen.getByText('Failed to reorder todo.')).toBeTruthy());
   });
 
-  // ── Inline description edit ───────────────────────────────────────────────
+  // ── Inline edit ─────────────────────────────────────────────────────────────
 
-  it('shows a textarea with current description when the edit button is clicked', async () => {
+  it('shows inputs with current title and description when the edit button is clicked', async () => {
     vi.mocked(todoService.list).mockResolvedValue(mockTodos);
     renderPage();
 
     await waitFor(() => screen.getByText('Todo item'));
-    fireEvent.click(screen.getAllByTitle('Edit description')[0]);
+    fireEvent.click(screen.getAllByTitle('Edit todo')[0]);
 
     expect(screen.getByDisplayValue('Todo item')).toBeTruthy();
+    expect(screen.getByDisplayValue('Todo description')).toBeTruthy();
   });
 
-  it('calls todoService.update with the new description on save', async () => {
-    const updated = { ...mockTodos[0], description: 'Updated description' };
+  it('calls todoService.update with title and description on save', async () => {
+    const updated = { ...mockTodos[0], title: 'Updated title', description: 'Updated desc' };
     vi.mocked(todoService.list).mockResolvedValue(mockTodos);
     vi.mocked(todoService.update).mockResolvedValue(updated);
     renderPage();
 
     await waitFor(() => screen.getByText('Todo item'));
-    fireEvent.click(screen.getAllByTitle('Edit description')[0]);
+    fireEvent.click(screen.getAllByTitle('Edit todo')[0]);
 
-    const textarea = screen.getByDisplayValue('Todo item');
-    fireEvent.change(textarea, { target: { value: 'Updated description' } });
+    const titleInput = screen.getByDisplayValue('Todo item');
+    const descTextarea = screen.getByDisplayValue('Todo description');
+    fireEvent.change(titleInput, { target: { value: 'Updated title' } });
+    fireEvent.change(descTextarea, { target: { value: 'Updated desc' } });
 
-    await act(async () => { fireEvent.submit(textarea.closest('form')!); });
+    await act(async () => { fireEvent.submit(titleInput.closest('form')!); });
 
-    expect(todoService.update).toHaveBeenCalledWith('1', { description: 'Updated description' });
-    await waitFor(() => expect(screen.getByText('Updated description')).toBeTruthy());
+    expect(todoService.update).toHaveBeenCalledWith('1', { title: 'Updated title', description: 'Updated desc' });
+    await waitFor(() => expect(screen.getByText('Updated title')).toBeTruthy());
   });
 
   it('closes the edit form on Cancel without calling update', async () => {
@@ -372,7 +445,7 @@ describe('TodoListPage', () => {
     renderPage();
 
     await waitFor(() => screen.getByText('Todo item'));
-    fireEvent.click(screen.getAllByTitle('Edit description')[0]);
+    fireEvent.click(screen.getAllByTitle('Edit todo')[0]);
 
     act(() => { fireEvent.click(screen.getByText('Cancel')); });
 
@@ -386,26 +459,26 @@ describe('TodoListPage', () => {
     renderPage();
 
     await waitFor(() => screen.getByText('Todo item'));
-    fireEvent.click(screen.getAllByTitle('Edit description')[0]);
+    fireEvent.click(screen.getAllByTitle('Edit todo')[0]);
 
-    const textarea = screen.getByDisplayValue('Todo item');
-    fireEvent.keyDown(textarea, { key: 'Escape' });
+    const titleInput = screen.getByDisplayValue('Todo item');
+    fireEvent.keyDown(titleInput, { key: 'Escape' });
 
     expect(todoService.update).not.toHaveBeenCalled();
     expect(screen.queryByDisplayValue('Todo item')).toBeNull();
   });
 
-  it('does not call update when saving an empty description', async () => {
+  it('does not call update when saving an empty title', async () => {
     vi.mocked(todoService.list).mockResolvedValue(mockTodos);
     renderPage();
 
     await waitFor(() => screen.getByText('Todo item'));
-    fireEvent.click(screen.getAllByTitle('Edit description')[0]);
+    fireEvent.click(screen.getAllByTitle('Edit todo')[0]);
 
-    const textarea = screen.getByDisplayValue('Todo item');
-    fireEvent.change(textarea, { target: { value: '   ' } });
+    const titleInput = screen.getByDisplayValue('Todo item');
+    fireEvent.change(titleInput, { target: { value: '   ' } });
 
-    await act(async () => { fireEvent.submit(textarea.closest('form')!); });
+    await act(async () => { fireEvent.submit(titleInput.closest('form')!); });
 
     expect(todoService.update).not.toHaveBeenCalled();
   });
@@ -416,15 +489,15 @@ describe('TodoListPage', () => {
     renderPage();
 
     await waitFor(() => screen.getByText('Todo item'));
-    fireEvent.click(screen.getAllByTitle('Edit description')[0]);
+    fireEvent.click(screen.getAllByTitle('Edit todo')[0]);
 
-    const textarea = screen.getByDisplayValue('Todo item');
-    fireEvent.change(textarea, { target: { value: 'New text' } });
+    const titleInput = screen.getByDisplayValue('Todo item');
+    fireEvent.change(titleInput, { target: { value: 'New title' } });
 
-    await act(async () => { fireEvent.submit(textarea.closest('form')!); });
+    await act(async () => { fireEvent.submit(titleInput.closest('form')!); });
 
     await waitFor(() => expect(screen.getByText('Failed to update todo.')).toBeTruthy());
-    expect(screen.getByDisplayValue('New text')).toBeTruthy();
+    expect(screen.getByDisplayValue('New title')).toBeTruthy();
   });
 
   // ── Project filter ────────────────────────────────────────────────────────
@@ -453,7 +526,7 @@ describe('TodoListPage', () => {
   });
 
   it('passes projectId to todoService.create when a project is selected', async () => {
-    const newTodo: Todo = { id: '99', description: 'New task', status: 'TODO', userId: 'u1', createdAt: BASE_DATE, updatedAt: BASE_DATE };
+    const newTodo: Todo = { id: '99', title: 'New task', status: 'TODO', userId: 'u1', createdAt: BASE_DATE, updatedAt: BASE_DATE };
     vi.mocked(todoService.list).mockResolvedValue([]);
     vi.mocked(todoService.create).mockResolvedValue(newTodo);
     vi.mocked(projectService.getById).mockResolvedValue(mockProject);
@@ -467,6 +540,6 @@ describe('TodoListPage', () => {
 
     await act(async () => { fireEvent.click(screen.getByText('Add')); });
 
-    expect(todoService.create).toHaveBeenCalledWith({ description: 'New task', projectId: 'p1' });
+    expect(todoService.create).toHaveBeenCalledWith({ title: 'New task', projectId: 'p1' });
   });
 });

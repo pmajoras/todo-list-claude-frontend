@@ -17,6 +17,7 @@ export function TodoDetailPage() {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [status, setStatus] = useState<TodoStatus>('TODO');
   const [saving, setSaving] = useState(false);
@@ -27,7 +28,8 @@ export function TodoDetailPage() {
     todoService.getById(id)
       .then(data => {
         setTodo(data);
-        setDescription(data.description);
+        setTitle(data.title);
+        setDescription(data.description ?? '');
         setStatus(data.status);
       })
       .catch(() => setLoadError('Failed to load todo.'))
@@ -35,12 +37,16 @@ export function TodoDetailPage() {
   }, [id]);
 
   async function handleSave() {
-    if (!id || !todo) return;
+    if (!id || !todo || !title.trim()) return;
     setSaving(true);
     setSaved(false);
     setSaveError(null);
     try {
-      const updated = await todoService.update(id, { description, status });
+      const updated = await todoService.update(id, {
+        title: title.trim(),
+        description: description.trim() || undefined,
+        status,
+      });
       setTodo(updated);
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
@@ -51,7 +57,11 @@ export function TodoDetailPage() {
     }
   }
 
-  const isDirty = todo && (description !== todo.description || status !== todo.status);
+  const isDirty = todo && (
+    title !== todo.title ||
+    description !== (todo.description ?? '') ||
+    status !== todo.status
+  );
 
   if (loading) return <p className={styles.state}>Loading…</p>;
   if (loadError) return <p className={`${styles.state} ${styles.errorState}`}>{loadError}</p>;
@@ -64,14 +74,23 @@ export function TodoDetailPage() {
       </button>
 
       <div className={styles.card}>
+        <label className={styles.label} htmlFor="title">Title</label>
+        <input
+          id="title"
+          className={styles.titleInput}
+          value={title}
+          onChange={e => setTitle(e.target.value)}
+          placeholder="Todo title…"
+        />
+
         <label className={styles.label} htmlFor="description">Description</label>
         <textarea
           id="description"
           className={styles.textarea}
           value={description}
           onChange={e => setDescription(e.target.value)}
-          rows={3}
-          placeholder="Describe this todo…"
+          rows={4}
+          placeholder="Add a description (optional)…"
         />
 
         <label className={styles.label}>Status</label>
@@ -98,7 +117,7 @@ export function TodoDetailPage() {
           <button
             className={`${styles.saveBtn} ${saved ? styles.savedBtn : ''}`}
             onClick={handleSave}
-            disabled={saving || !isDirty}
+            disabled={saving || !isDirty || !title.trim()}
           >
             {saving ? 'Saving…' : saved ? 'Saved!' : 'Save Changes'}
           </button>

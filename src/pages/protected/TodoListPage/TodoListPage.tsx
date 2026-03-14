@@ -34,7 +34,7 @@ const COLUMNS: { status: TodoStatus; label: string; accent: string }[] = [
 interface CardProps {
   todo: Todo;
   onNavigate: (id: string) => void;
-  onUpdate: (id: string, description: string) => Promise<void>;
+  onUpdate: (id: string, patch: { title?: string; description?: string }) => Promise<void>;
   overlay?: boolean;
 }
 
@@ -43,7 +43,8 @@ function TodoCard({ todo, onNavigate, onUpdate, overlay = false }: CardProps) {
   const { setNodeRef: setDropRef, isOver: isDropOver } = useDroppable({ id: todo.id });
   const dragged = useRef(false);
   const [isEditing, setIsEditing] = useState(false);
-  const [editValue, setEditValue] = useState('');
+  const [editTitle, setEditTitle] = useState('');
+  const [editDescription, setEditDescription] = useState('');
 
   const setRef = (node: HTMLElement | null) => {
     setDragRef(node);
@@ -60,22 +61,23 @@ function TodoCard({ todo, onNavigate, onUpdate, overlay = false }: CardProps) {
 
   function startEdit(e: React.MouseEvent) {
     e.stopPropagation();
-    setEditValue(todo.description);
+    setEditTitle(todo.title);
+    setEditDescription(todo.description ?? '');
     setIsEditing(true);
   }
 
   async function handleSave(e: React.FormEvent) {
     e.preventDefault();
-    if (!editValue.trim()) return;
+    if (!editTitle.trim()) return;
     try {
-      await onUpdate(todo.id, editValue.trim());
+      await onUpdate(todo.id, { title: editTitle.trim(), description: editDescription.trim() || undefined });
       setIsEditing(false);
     } catch {
       // keep form open; parent shows the error
     }
   }
 
-  function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
+  function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement | HTMLInputElement>) {
     if (e.key === 'Escape') setIsEditing(false);
   }
 
@@ -98,16 +100,24 @@ function TodoCard({ todo, onNavigate, onUpdate, overlay = false }: CardProps) {
     >
       {isEditing ? (
         <form className={styles.cardEditForm} onSubmit={handleSave}>
-          <textarea
+          <input
             autoFocus
-            className={styles.cardTextarea}
-            value={editValue}
-            onChange={e => setEditValue(e.target.value)}
+            className={styles.cardInput}
+            value={editTitle}
+            onChange={e => setEditTitle(e.target.value)}
             onKeyDown={handleKeyDown}
-            rows={3}
+            placeholder="Title"
+          />
+          <textarea
+            className={styles.cardTextarea}
+            value={editDescription}
+            onChange={e => setEditDescription(e.target.value)}
+            onKeyDown={handleKeyDown}
+            rows={2}
+            placeholder="Description (optional)"
           />
           <div className={styles.cardEditActions}>
-            <button className={styles.cardSaveBtn} type="submit" disabled={!editValue.trim()}>
+            <button className={styles.cardSaveBtn} type="submit" disabled={!editTitle.trim()}>
               Save
             </button>
             <button className={styles.cardCancelBtn} type="button" onClick={() => setIsEditing(false)}>
@@ -118,8 +128,13 @@ function TodoCard({ todo, onNavigate, onUpdate, overlay = false }: CardProps) {
       ) : (
         <>
           <div className={styles.cardBody}>
-            <p className={styles.cardText}>{todo.description}</p>
-            <button className={styles.cardEditBtn} onClick={startEdit} title="Edit description">
+            <div className={styles.cardContent}>
+              <p className={styles.cardTitle}>{todo.title}</p>
+              {todo.description && (
+                <p className={styles.cardDescription}>{todo.description}</p>
+              )}
+            </div>
+            <button className={styles.cardEditBtn} onClick={startEdit} title="Edit todo">
               ✎
             </button>
           </div>
@@ -139,7 +154,7 @@ interface ColumnProps {
   todos: Todo[];
   onNavigate: (id: string) => void;
   onAddClick: () => void;
-  onUpdate: (id: string, description: string) => Promise<void>;
+  onUpdate: (id: string, patch: { title?: string; description?: string }) => Promise<void>;
 }
 
 function KanbanColumn({ status, label, accent, todos, onNavigate, onAddClick, onUpdate }: ColumnProps) {
@@ -184,6 +199,7 @@ export function TodoListPage() {
   const [error, setError]             = useState<string | null>(null);
   const [activeId, setActiveId]       = useState<string | null>(null);
   const [showForm, setShowForm]       = useState(false);
+  const [newTitle, setNewTitle]       = useState('');
   const [newDescription, setNewDescription] = useState('');
   const [creating, setCreating]       = useState(false);
   const [projectName, setProjectName] = useState<string | null>(null);
@@ -270,11 +286,11 @@ export function TodoListPage() {
     }
   }
 
-  async function handleUpdateDescription(id: string, description: string) {
+  async function handleUpdateTodo(id: string, patch: { title?: string; description?: string }) {
     const original = todos.find(t => t.id === id);
     if (!original) return;
     try {
-      const updated = await todoService.update(id, { description });
+      const updated = await todoService.update(id, patch);
       setTodos(prev => prev.map(t => t.id === id ? updated : t));
     } catch (err) {
       setError('Failed to update todo.');
@@ -284,11 +300,16 @@ export function TodoListPage() {
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
-    if (!newDescription.trim()) return;
+    if (!newTitle.trim()) return;
     setCreating(true);
     try {
-      const todo = await todoService.create({ description: newDescription.trim(), projectId });
+      const todo = await todoService.create({
+        title: newTitle.trim(),
+        description: newDescription.trim() || undefined,
+        projectId,
+      });
       setTodos(prev => [todo, ...prev]);
+      setNewTitle('');
       setNewDescription('');
       setShowForm(false);
     } catch {
@@ -318,20 +339,28 @@ export function TodoListPage() {
 
       {showForm && (
         <form className={styles.form} onSubmit={handleCreate}>
-          <input
-            autoFocus
-            className={styles.input}
-            placeholder="What needs to be done?"
-            value={newDescription}
-            onChange={e => setNewDescription(e.target.value)}
-          />
-          <button className={styles.submitBtn} type="submit" disabled={creating}>
+          <div className={styles.formFields}>
+            <input
+              autoFocus
+              className={styles.input}
+              placeholder="What needs to be done?"
+              value={newTitle}
+              onChange={e => setNewTitle(e.target.value)}
+            />
+            <input
+              className={styles.input}
+              placeholder="Description (optional)"
+              value={newDescription}
+              onChange={e => setNewDescription(e.target.value)}
+            />
+          </div>
+          <button className={styles.submitBtn} type="submit" disabled={creating || !newTitle.trim()}>
             {creating ? 'Adding…' : 'Add'}
           </button>
           <button
             className={styles.cancelBtn}
             type="button"
-            onClick={() => { setShowForm(false); setNewDescription(''); }}
+            onClick={() => { setShowForm(false); setNewTitle(''); setNewDescription(''); }}
           >
             Cancel
           </button>
@@ -349,7 +378,7 @@ export function TodoListPage() {
               todos={sortByOrder(todos.filter(t => t.status === col.status))}
               onNavigate={id => navigate(`/app/todos/${id}`)}
               onAddClick={() => setShowForm(true)}
-              onUpdate={handleUpdateDescription}
+              onUpdate={handleUpdateTodo}
             />
           ))}
         </div>

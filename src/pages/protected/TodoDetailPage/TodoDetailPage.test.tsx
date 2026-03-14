@@ -29,7 +29,8 @@ vi.mock('react-router-dom', async (importOriginal) => {
 // ── Fixtures ─────────────────────────────────────────────────────────────────
 const mockTodo: Todo = {
   id:          'todo-1',
-  description: 'Buy groceries',
+  title:       'Buy groceries',
+  description: 'Milk, eggs, bread',
   status:      'TODO',
   userId:      'u1',
   createdAt:   '2024-01-15T10:00:00Z',
@@ -57,11 +58,14 @@ describe('TodoDetailPage', () => {
     expect(screen.getByText('Loading…')).toBeTruthy();
   });
 
-  it('displays the todo description in the textarea after loading', async () => {
+  it('displays the todo title and description after loading', async () => {
     vi.mocked(todoService.getById).mockResolvedValue(mockTodo);
     renderPage();
 
-    await waitFor(() => expect(screen.getByDisplayValue('Buy groceries')).toBeTruthy());
+    await waitFor(() => {
+      expect(screen.getByDisplayValue('Buy groceries')).toBeTruthy();
+      expect(screen.getByDisplayValue('Milk, eggs, bread')).toBeTruthy();
+    });
   });
 
   it('displays created and updated timestamps', async () => {
@@ -90,13 +94,25 @@ describe('TodoDetailPage', () => {
     expect(screen.getByText('Save Changes')).toBeDisabled();
   });
 
-  it('Save Changes button is enabled after editing the description', async () => {
+  it('Save Changes button is enabled after editing the title', async () => {
     vi.mocked(todoService.getById).mockResolvedValue(mockTodo);
     renderPage();
 
     await waitFor(() => screen.getByDisplayValue('Buy groceries'));
     fireEvent.change(screen.getByDisplayValue('Buy groceries'), {
       target: { value: 'Buy organic groceries' },
+    });
+
+    expect(screen.getByText('Save Changes')).not.toBeDisabled();
+  });
+
+  it('Save Changes button is enabled after editing the description', async () => {
+    vi.mocked(todoService.getById).mockResolvedValue(mockTodo);
+    renderPage();
+
+    await waitFor(() => screen.getByDisplayValue('Milk, eggs, bread'));
+    fireEvent.change(screen.getByDisplayValue('Milk, eggs, bread'), {
+      target: { value: 'Organic milk, free-range eggs' },
     });
 
     expect(screen.getByText('Save Changes')).not.toBeDisabled();
@@ -112,9 +128,9 @@ describe('TodoDetailPage', () => {
     expect(screen.getByText('Save Changes')).not.toBeDisabled();
   });
 
-  it('calls todoService.update with the updated description and status', async () => {
+  it('calls todoService.update with title, description, and status', async () => {
     vi.mocked(todoService.getById).mockResolvedValue(mockTodo);
-    vi.mocked(todoService.update).mockResolvedValue({ ...mockTodo, description: 'Buy organic groceries' });
+    vi.mocked(todoService.update).mockResolvedValue({ ...mockTodo, title: 'Buy organic groceries' });
     renderPage();
 
     await waitFor(() => screen.getByDisplayValue('Buy groceries'));
@@ -125,14 +141,34 @@ describe('TodoDetailPage', () => {
     await act(async () => { fireEvent.click(screen.getByText('Save Changes')); });
 
     expect(todoService.update).toHaveBeenCalledWith('todo-1', {
-      description: 'Buy organic groceries',
+      title: 'Buy organic groceries',
+      description: 'Milk, eggs, bread',
+      status: 'TODO',
+    });
+  });
+
+  it('sends undefined description when description is cleared', async () => {
+    vi.mocked(todoService.getById).mockResolvedValue(mockTodo);
+    vi.mocked(todoService.update).mockResolvedValue({ ...mockTodo, description: undefined });
+    renderPage();
+
+    await waitFor(() => screen.getByDisplayValue('Milk, eggs, bread'));
+    fireEvent.change(screen.getByDisplayValue('Milk, eggs, bread'), {
+      target: { value: '' },
+    });
+
+    await act(async () => { fireEvent.click(screen.getByText('Save Changes')); });
+
+    expect(todoService.update).toHaveBeenCalledWith('todo-1', {
+      title: 'Buy groceries',
+      description: undefined,
       status: 'TODO',
     });
   });
 
   it('shows "Saved!" after a successful save', async () => {
     vi.mocked(todoService.getById).mockResolvedValue(mockTodo);
-    vi.mocked(todoService.update).mockResolvedValue({ ...mockTodo, description: 'Updated' });
+    vi.mocked(todoService.update).mockResolvedValue({ ...mockTodo, title: 'Updated' });
     renderPage();
 
     await waitFor(() => screen.getByDisplayValue('Buy groceries'));

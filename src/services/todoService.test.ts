@@ -43,7 +43,7 @@ describe('todoService', () => {
 
   it('create() calls POST /api/todos with the request body', () => {
     vi.mocked(api.post).mockResolvedValue({});
-    const data = { description: 'New todo' };
+    const data = { title: 'New todo' };
 
     todoService.create(data);
 
@@ -60,7 +60,7 @@ describe('todoService', () => {
   });
 
   it('list() returns the value resolved by api.get', async () => {
-    const todos = [{ id: '1', description: 'Test' }];
+    const todos = [{ id: '1', title: 'Test' }];
     vi.mocked(api.get).mockResolvedValue(todos);
 
     const result = await todoService.list();

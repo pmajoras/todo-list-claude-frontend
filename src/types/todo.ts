@@ -2,7 +2,8 @@ export type TodoStatus = 'TODO' | 'IN_PROGRESS' | 'DONE';
 
 export interface Todo {
   id: string;
-  description: string;
+  title: string;
+  description?: string;
   userId: string;
   status: TodoStatus;
   createdAt: string;
@@ -13,13 +14,15 @@ export interface Todo {
 }
 
 export interface CreateTodoRequest {
-  description: string;
+  title: string;
+  description?: string;
   projectId?: string;
   parentTodoId?: string;
   order?: number;
 }
 
 export interface UpdateTodoRequest {
+  title?: string;
   description?: string;
   status?: TodoStatus;
   projectId?: string;
@@ -27,6 +30,7 @@ export interface UpdateTodoRequest {
 }
 
 export interface PatchTodoRequest {
+  title?: string;
   description?: string;
   status?: TodoStatus;
   projectId?: string;

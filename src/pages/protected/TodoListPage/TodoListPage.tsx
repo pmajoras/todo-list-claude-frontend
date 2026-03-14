@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   DndContext,
   DragEndEvent,
@@ -13,8 +13,15 @@ import {
 } from '@dnd-kit/core';
 import { CSS } from '@dnd-kit/utilities';
 import { todoService } from '../../../services/todoService';
-import type { Todo, TodoStatus } from '../../../types/todo';
+import { projectService } from '../../../services/projectService';
+import type { Todo, TodoStatus, PatchTodoRequest } from '../../../types/todo';
 import styles from './TodoListPage.module.css';
+
+const STATUSES = new Set<string>(['TODO', 'IN_PROGRESS', 'DONE']);
+
+function sortByOrder(list: Todo[]): Todo[] {
+  return [...list].sort((a, b) => (b.order ?? 1) - (a.order ?? 1));
+}
 
 const COLUMNS: { status: TodoStatus; label: string; accent: string }[] = [
   { status: 'TODO',        label: 'Todo',        accent: 'var(--color-status-todo)' },
@@ -27,45 +34,98 @@ const COLUMNS: { status: TodoStatus; label: string; accent: string }[] = [
 interface CardProps {
   todo: Todo;
   onNavigate: (id: string) => void;
+  onUpdate: (id: string, description: string) => Promise<void>;
   overlay?: boolean;
 }
 
-function TodoCard({ todo, onNavigate, overlay = false }: CardProps) {
-  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({ id: todo.id });
+function TodoCard({ todo, onNavigate, onUpdate, overlay = false }: CardProps) {
+  const { attributes, listeners, setNodeRef: setDragRef, transform, isDragging } = useDraggable({ id: todo.id });
+  const { setNodeRef: setDropRef, isOver: isDropOver } = useDroppable({ id: todo.id });
   const dragged = useRef(false);
+  const [isEditing, setIsEditing] = useState(false);
+  const [editValue, setEditValue] = useState('');
+
+  const setRef = (node: HTMLElement | null) => {
+    setDragRef(node);
+    setDropRef(node);
+  };
 
   const style = transform ? { transform: CSS.Translate.toString(transform) } : undefined;
 
-  function handlePointerDown() {
-    dragged.current = false;
-  }
-
-  function handlePointerMove() {
-    dragged.current = true;
-  }
-
+  function handlePointerDown() { dragged.current = false; }
+  function handlePointerMove() { dragged.current = true; }
   function handleClick() {
-    if (!dragged.current) onNavigate(todo.id);
+    if (!dragged.current && !isEditing) onNavigate(todo.id);
+  }
+
+  function startEdit(e: React.MouseEvent) {
+    e.stopPropagation();
+    setEditValue(todo.description);
+    setIsEditing(true);
+  }
+
+  async function handleSave(e: React.FormEvent) {
+    e.preventDefault();
+    if (!editValue.trim()) return;
+    try {
+      await onUpdate(todo.id, editValue.trim());
+      setIsEditing(false);
+    } catch {
+      // keep form open; parent shows the error
+    }
+  }
+
+  function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
+    if (e.key === 'Escape') setIsEditing(false);
   }
 
   return (
     <div
-      ref={setNodeRef}
+      ref={setRef}
       style={style}
       className={[
         styles.card,
-        isDragging  ? styles.cardGhost   : '',
-        overlay     ? styles.cardOverlay : '',
+        isDragging   ? styles.cardGhost      : '',
+        overlay      ? styles.cardOverlay    : '',
+        isDropOver && !isEditing ? styles.cardDropTarget : '',
         todo.status === 'DONE' ? styles.cardDone : '',
       ].join(' ')}
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
       onClick={handleClick}
-      {...listeners}
-      {...attributes}
+      {...(isEditing ? {} : listeners)}
+      {...(isEditing ? {} : attributes)}
     >
-      <p className={styles.cardText}>{todo.description}</p>
-      <span className={styles.cardDate}>{new Date(todo.updatedAt).toLocaleDateString()}</span>
+      {isEditing ? (
+        <form className={styles.cardEditForm} onSubmit={handleSave}>
+          <textarea
+            autoFocus
+            className={styles.cardTextarea}
+            value={editValue}
+            onChange={e => setEditValue(e.target.value)}
+            onKeyDown={handleKeyDown}
+            rows={3}
+          />
+          <div className={styles.cardEditActions}>
+            <button className={styles.cardSaveBtn} type="submit" disabled={!editValue.trim()}>
+              Save
+            </button>
+            <button className={styles.cardCancelBtn} type="button" onClick={() => setIsEditing(false)}>
+              Cancel
+            </button>
+          </div>
+        </form>
+      ) : (
+        <>
+          <div className={styles.cardBody}>
+            <p className={styles.cardText}>{todo.description}</p>
+            <button className={styles.cardEditBtn} onClick={startEdit} title="Edit description">
+              ✎
+            </button>
+          </div>
+          <span className={styles.cardDate}>{new Date(todo.updatedAt).toLocaleDateString()}</span>
+        </>
+      )}
     </div>
   );
 }
@@ -79,9 +139,10 @@ interface ColumnProps {
   todos: Todo[];
   onNavigate: (id: string) => void;
   onAddClick: () => void;
+  onUpdate: (id: string, description: string) => Promise<void>;
 }
 
-function KanbanColumn({ status, label, accent, todos, onNavigate, onAddClick }: ColumnProps) {
+function KanbanColumn({ status, label, accent, todos, onNavigate, onAddClick, onUpdate }: ColumnProps) {
   const { setNodeRef, isOver } = useDroppable({ id: status });
 
   return (
@@ -102,7 +163,7 @@ function KanbanColumn({ status, label, accent, todos, onNavigate, onAddClick }: 
         className={[styles.columnBody, isOver ? styles.columnOver : ''].join(' ')}
       >
         {todos.map(todo => (
-          <TodoCard key={todo.id} todo={todo} onNavigate={onNavigate} />
+          <TodoCard key={todo.id} todo={todo} onNavigate={onNavigate} onUpdate={onUpdate} />
         ))}
 
         {todos.length === 0 && (
@@ -125,18 +186,32 @@ export function TodoListPage() {
   const [showForm, setShowForm]       = useState(false);
   const [newDescription, setNewDescription] = useState('');
   const [creating, setCreating]       = useState(false);
+  const [projectName, setProjectName] = useState<string | null>(null);
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const projectId = searchParams.get('projectId') ?? undefined;
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
   );
 
   useEffect(() => {
-    todoService.list()
+    setLoading(true);
+    todoService.list({ projectId })
       .then(setTodos)
       .catch(() => setError('Failed to load todos.'))
       .finally(() => setLoading(false));
-  }, []);
+  }, [projectId]);
+
+  useEffect(() => {
+    if (projectId) {
+      projectService.getById(projectId)
+        .then(p => setProjectName(p.name))
+        .catch(() => setProjectName(null));
+    } else {
+      setProjectName(null);
+    }
+  }, [projectId]);
 
   function handleDragStart({ active }: DragStartEvent) {
     setActiveId(active.id as string);
@@ -146,19 +221,64 @@ export function TodoListPage() {
     setActiveId(null);
     if (!over) return;
 
-    const todoId   = active.id as string;
-    const newStatus = over.id as TodoStatus;
-    const todo     = todos.find(t => t.id === todoId);
-    if (!todo || todo.status === newStatus) return;
+    const todoId = active.id as string;
+    const activeTodo = todos.find(t => t.id === todoId);
+    if (!activeTodo) return;
 
-    // Optimistic update
-    setTodos(prev => prev.map(t => t.id === todoId ? { ...t, status: newStatus } : t));
+    if (STATUSES.has(over.id as string)) {
+      // Column drop: status change only
+      const newStatus = over.id as TodoStatus;
+      if (activeTodo.status === newStatus) return;
+
+      setTodos(prev => prev.map(t => t.id === todoId ? { ...t, status: newStatus } : t));
+      try {
+        const updated = await todoService.update(todoId, { status: newStatus });
+        setTodos(prev => prev.map(t => t.id === todoId ? updated : t));
+      } catch {
+        setTodos(prev => prev.map(t => t.id === todoId ? activeTodo : t));
+        setError('Failed to move todo.');
+      }
+    } else {
+      // Card drop: reorder (and optionally status change)
+      if (over.id === todoId) return;
+
+      const overTodo = todos.find(t => t.id === over.id);
+      if (!overTodo) return;
+
+      const newStatus = overTodo.status;
+      const activeOrder = activeTodo.order ?? 1;
+      const overOrder = overTodo.order ?? 1;
+      // Dragging down within the same column → active sits above over in the list
+      // (higher order = higher position), so place it below by taking order - 1.
+      // Dragging up, or cross-column → place above the target with order + 1.
+      const draggingDown = activeTodo.status === newStatus && activeOrder > overOrder;
+      const newOrder = draggingDown ? overOrder - 1 : overOrder + 1;
+
+      const patch: PatchTodoRequest = {};
+      if (activeTodo.status !== newStatus) patch.status = newStatus;
+      if (activeTodo.order !== newOrder)   patch.order  = newOrder;
+      if (Object.keys(patch).length === 0) return;
+
+      setTodos(prev => prev.map(t => t.id === todoId ? { ...t, ...patch } : t));
+      try {
+        const updated = await todoService.update(todoId, patch);
+        setTodos(prev => prev.map(t => t.id === todoId ? updated : t));
+      } catch {
+        setTodos(prev => prev.map(t => t.id === todoId ? activeTodo : t));
+        setError('Failed to reorder todo.');
+      }
+    }
+  }
+
+  async function handleUpdateDescription(id: string, description: string) {
+    const original = todos.find(t => t.id === id);
+    if (!original) return;
     try {
-      const updated = await todoService.update(todoId, { status: newStatus });
-      setTodos(prev => prev.map(t => t.id === todoId ? updated : t));
-    } catch {
-      setTodos(prev => prev.map(t => t.id === todoId ? todo : t)); // revert
-      setError('Failed to move todo.');
+      const updated = await todoService.update(id, { description });
+      setTodos(prev => prev.map(t => t.id === id ? updated : t));
+    } catch (err) {
+      setError('Failed to update todo.');
+      throw err;
     }
   }
 
@@ -167,7 +287,7 @@ export function TodoListPage() {
     if (!newDescription.trim()) return;
     setCreating(true);
     try {
-      const todo = await todoService.create({ description: newDescription.trim() });
+      const todo = await todoService.create({ description: newDescription.trim(), projectId });
       setTodos(prev => [todo, ...prev]);
       setNewDescription('');
       setShowForm(false);
@@ -186,7 +306,7 @@ export function TodoListPage() {
     <div className={styles.page}>
       <div className={styles.header}>
         <div className={styles.headerLeft}>
-          <h1 className={styles.title}>My Todos</h1>
+          <h1 className={styles.title}>{projectName ?? 'My Todos'}</h1>
           <span className={styles.badge}>{todos.length}</span>
         </div>
         <button className={styles.newBtn} onClick={() => setShowForm(true)}>
@@ -226,16 +346,17 @@ export function TodoListPage() {
               status={col.status}
               label={col.label}
               accent={col.accent}
-              todos={todos.filter(t => t.status === col.status)}
+              todos={sortByOrder(todos.filter(t => t.status === col.status))}
               onNavigate={id => navigate(`/app/todos/${id}`)}
               onAddClick={() => setShowForm(true)}
+              onUpdate={handleUpdateDescription}
             />
           ))}
         </div>
 
         <DragOverlay dropAnimation={{ duration: 180, easing: 'ease' }}>
           {activeTodo && (
-            <TodoCard todo={activeTodo} onNavigate={() => {}} overlay />
+            <TodoCard todo={activeTodo} onNavigate={() => {}} onUpdate={async () => {}} overlay />
           )}
         </DragOverlay>
       </DndContext>

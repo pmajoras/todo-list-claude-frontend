@@ -46,7 +46,19 @@ Two layout trees in `src/router/index.tsx`:
 
 ### State Management
 
-Auth state lives entirely in `AuthContext` (`src/contexts/AuthContext.tsx`). No other global state exists yet — todo data is placeholder-only.
+Auth state lives entirely in `AuthContext` (`src/contexts/AuthContext.tsx`). Todo state is managed locally within each page component — no global store.
+
+### API Layer
+
+`src/services/api.ts` — thin `fetch` wrapper that attaches the JWT from `localStorage` as a Bearer token. Throws on non-2xx; returns `undefined` on 204.
+
+`src/services/todoService.ts` — typed wrappers around `/api/todos` endpoints (`list`, `getById`, `create`, `update`).
+
+`Todo` type (`src/types/todo.ts`) has `status: 'TODO' | 'IN_PROGRESS' | 'DONE'`, optional `projectId`, `parentTodoId`, and `order`.
+
+### Kanban Board
+
+`TodoListPage` uses `@dnd-kit/core` for drag-and-drop. Dropping a card onto a column calls `todoService.update` with the new status and applies an optimistic update (reverted on failure). Clicking a non-dragged card navigates to `/app/todos/:id`.
 
 ### Conventions
 

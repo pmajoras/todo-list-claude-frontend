@@ -17,12 +17,20 @@ describe('todoService', () => {
     vi.clearAllMocks();
   });
 
-  it('list() calls GET /api/todos', () => {
+  it('list() calls GET /api/todos with no query string when called without params', () => {
     vi.mocked(api.get).mockResolvedValue([]);
 
     todoService.list();
 
     expect(api.get).toHaveBeenCalledWith('/api/todos');
+  });
+
+  it('list({ projectId }) appends projectId as a query param', () => {
+    vi.mocked(api.get).mockResolvedValue([]);
+
+    todoService.list({ projectId: 'p1' });
+
+    expect(api.get).toHaveBeenCalledWith('/api/todos?projectId=p1');
   });
 
   it('getById() calls GET /api/todos/:id', () => {

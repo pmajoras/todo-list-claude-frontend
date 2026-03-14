@@ -1,5 +1,6 @@
 import { Outlet, Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
+import { ProjectSidebar } from '@/components/ProjectSidebar';
 import styles from './AppLayout.module.css';
 
 export function AppLayout() {
@@ -24,9 +25,12 @@ export function AppLayout() {
           </button>
         </nav>
       </header>
-      <main className={styles.main}>
-        <Outlet />
-      </main>
+      <div className={styles.body}>
+        <ProjectSidebar />
+        <main className={styles.main}>
+          <Outlet />
+        </main>
+      </div>
     </div>
   );
 }
